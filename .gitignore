@@ -1,0 +1,11 @@
+# Local/generated files
+tools/__pycache__/
+*.pyc
+*.log
+.venv/
+
+# Local editor and OS metadata
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

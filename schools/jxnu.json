@@ -1,0 +1,17 @@
+{
+  "id": "jxnu-stu",
+  "schoolName": "江西师范大学",
+  "ssid": "jxnu_stu",
+  "portalUrl": "http://portal.jxnu.edu.cn/srun_portal_pc?ac_id=1&theme=pro",
+  "bypassHosts": [
+    "portal.jxnu.edu.cn",
+    "172.16.8.8",
+    "172.16.1.2"
+  ],
+  "operator": "@ctcc",
+  "internetCheck": {
+    "url": "http://connectivitycheck.gstatic.com/generate_204",
+    "expectedStatus": 204
+  }
+}
+

@@ -1,0 +1,15 @@
+{
+  "id": "example-school",
+  "schoolName": "替换为学校名称",
+  "ssid": "替换为校园网SSID",
+  "portalUrl": "http://替换为认证域名或IP/login",
+  "bypassHosts": [
+    "替换为认证域名或IP"
+  ],
+  "operator": "",
+  "internetCheck": {
+    "url": "http://connectivitycheck.gstatic.com/generate_204",
+    "expectedStatus": 204
+  }
+}
+
