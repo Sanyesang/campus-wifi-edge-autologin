@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [switch]$ForceOpen,
     [int]$WaitSeconds = 180

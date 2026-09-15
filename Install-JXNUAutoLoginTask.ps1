@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $Installer = Join-Path $PSScriptRoot 'Install-CampusAutoLoginTask.ps1'

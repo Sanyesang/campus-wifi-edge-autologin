@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $Uninstaller = Join-Path $PSScriptRoot 'Uninstall-CampusAutoLoginTask.ps1'

@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$TaskName = 'Campus Wi-Fi Auto Login - jxnu-stu'
 )

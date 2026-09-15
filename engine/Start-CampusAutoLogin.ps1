@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $false)]
     [string]$ConfigPath = (Join-Path $PSScriptRoot '..\schools\jxnu.json'),

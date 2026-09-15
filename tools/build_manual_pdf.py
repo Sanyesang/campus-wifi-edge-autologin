@@ -119,7 +119,7 @@ story.append(P("1. 两种联网模式", "H1Campus"))
 story.append(P("安装时只选择一种模式即可。两种模式使用同一个认证引擎，区别只是启动时机。", "BodyCampus"))
 story.append(make_table([
     ["模式", "怎样触发", "适合谁", "注意事项"],
-    ["一键联网（半自动）", "双击桌面快捷方式后运行", "希望开机后自行决定何时联网的人", "不会创建开机任务；需要用户点一次"],
+    ["一键联网（半自动）", "双击桌面快捷方式打开助手窗口", "希望开机后自行决定何时联网的人", "需点击大按钮；可勾选开机自启"],
     ["自动联网（全自动）", "用户登录 Windows 后由任务计划程序运行", "希望进入桌面后自动认证的人", "需要先安装任务；若 Wi-Fi 尚未就绪会等待"],
 ], [31*mm, 42*mm, 46*mm, 43*mm]))
 story.append(Spacer(1, 4*mm))
@@ -129,13 +129,14 @@ story.append(P("2. 安装与切换", "H1Campus"))
 story.append(P("最简单的入口是双击 <b>Setup-JXNUAutoLogin.cmd</b>，然后按提示选择：1 为一键联网，2 为全自动联网。", "BodyCampus"))
 story.append(P("也可以在 PowerShell 中执行：", "BodyCampus"))
 story.append(P("一键模式：<font name='Courier'>.\\Setup-JXNUAutoLogin.ps1 -Mode one-click</font><br/>全自动模式：<font name='Courier'>.\\Setup-JXNUAutoLogin.ps1 -Mode automatic</font>", "BodyCampus"))
-story.append(bullet("一键模式会在桌面创建“江西师范大学校园网一键连接.lnk”，并移除本工具自己创建的同名自动任务。"))
+story.append(bullet("一键模式会在桌面创建“江西师范大学校园网一键连接.lnk”，打开后点击窗口中央的“一键连接校园网”按钮。"))
+story.append(bullet("窗口中的“开机自启”只会让下次 Windows 登录时自动打开窗口，不会在后台擅自提交认证。"))
 story.append(bullet("全自动模式会注册“JXNU Wi-Fi Auto Login”任务，触发后等待 jxnu_stu 连接，再打开 Edge 认证。"))
 story.append(bullet("两种模式都不会立即替你断开当前网络，也不会在本次制作过程中触发登录。"))
 
 story.append(P("3. 日常使用流程", "H1Campus"))
 story.append(P("一键模式", "H2Campus"))
-story.append(P("1）确认电脑已打开 Wi-Fi；2）确认连接到 <b>jxnu_stu</b>；3）双击桌面快捷方式；4）等待 Edge 打开校园网页面；5）脚本把运营商切换到电信并点击登录；6）看到网页显示认证成功后即可上网。", "BodyCampus"))
+story.append(P("1）确认电脑已打开 Wi-Fi；2）确认连接到 <b>jxnu_stu</b>；3）双击桌面快捷方式；4）在窗口中央点击“一键连接校园网”；5）等待 Edge 打开校园网页面，脚本把运营商切换到电信并点击登录；6）看到网页显示认证成功后即可上网。", "BodyCampus"))
 story.append(P("全自动模式", "H2Campus"))
 story.append(P("Windows 登录后任务会在后台等待目标 Wi-Fi。Wi-Fi 就绪后，脚本打开 Edge 并执行同样的认证流程。若校园网尚未发放地址或门户暂时不可达，脚本会等待并记录状态，不会填写空密码。", "BodyCampus"))
 story.append(PageBreak())
@@ -143,7 +144,7 @@ story.append(PageBreak())
 story.append(P("4. 常见问题与排错", "H1Campus"))
 story.append(make_table([
     ["现象", "优先检查", "处理方式"],
-    ["桌面快捷方式点了没反应", "Wi-Fi 是否连接到 jxnu_stu；PowerShell 执行策略", "在工具目录执行 <font name='Courier'>powershell -ExecutionPolicy Bypass -File .\\Start-JXNUAutoLogin.ps1 -ForceOpen</font> 查看提示"],
+    ["桌面快捷方式点了没反应", "GUI 脚本、PowerShell 执行策略", "确认快捷方式指向 <font name='Courier'>CampusAutoLoginUI.ps1</font>；必要时在工具目录执行 <font name='Courier'>powershell -ExecutionPolicy Bypass -File .\\CampusAutoLoginUI.ps1</font> 查看提示"],
     ["Edge 打开但没有自动登录", "Edge 是否已保存密码；用户脚本是否启用", "确认对应门户页已安装并启用 <b>engine/campus-autologin.user.js</b>；不要在无密码时强制提交"],
     ["运营商没有切到电信", "门户页面结构是否变化", "检查页面是否仍有 <font name='Courier'>@ctcc</font> 或“电信”选项；若学校改版，需要更新用户脚本选择器"],
     ["全自动模式没有启动", "任务是否存在、Wi-Fi 是否晚于任务启动", "运行 <font name='Courier'>Get-ScheduledTask -TaskName 'JXNU Wi-Fi Auto Login'</font>；任务会等待目标 SSID，不要重复安装多个同名任务"],

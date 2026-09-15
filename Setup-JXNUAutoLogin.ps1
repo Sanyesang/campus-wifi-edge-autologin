@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet('one-click', 'automatic')]
     [string]$Mode = 'one-click'
