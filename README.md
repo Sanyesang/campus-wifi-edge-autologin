@@ -11,7 +11,15 @@
 
 配套手册：[校园网自动认证工具-使用与排错手册.pdf](docs/校园网自动认证工具-使用与排错手册.pdf)
 
-工具只负责：
+## 旧版自动连接方案失效说明
+
+截至 2026-09-20，仓库早期的“等待 Wi-Fi、检测互联网、启动 Edge、等待页面、再执行认证”的自动连接闭环没有在当前电脑上稳定工作。旧版流程可能在网络检测、代理环境、浏览器启动或认证页加载阶段提前结束，导致坐标序列没有真正执行。因此，旧版通用引擎、开机自动任务、用户脚本和认证结果检测都不再宣称可用，也不应作为当前校园网连接方案。
+
+当前只保留一个最小化的人工前置、固定坐标点击工具：`CoordinateClicker.ps1`。它不检查 Wi-Fi，不检测互联网，不启动 Edge，不读取账号密码，也不判断认证是否成功。用户先手动打开认证页面并切到前台，再点击工具按钮；工具等待 8 秒后，按固定坐标依次点击，每次间隔 2 秒。该工具只适用于采集坐标时的屏幕分辨率、显示缩放、窗口位置和页面布局，条件变化后需要重新采集坐标。
+
+仓库中的旧版脚本和配置保留用于历史排查，不代表已经通过当前环境验收。若需要通用化、自动判断认证状态或适配其他学校，应重新设计和实测，不能从旧版代码直接推断可用性。
+
+历史版本工具曾尝试负责：
 
 1. Windows 登录后等待目标 Wi-Fi 连接；
 2. 检测当前是否已经可以访问互联网；
@@ -25,10 +33,10 @@
 
 - 配置文件：[schools/jxnu.json](schools/jxnu.json)
 - Wi-Fi：`jxnu_stu`
-- 认证域名：`portal.jxnu.edu.cn`
+- 认证入口：`172.17.1.2/srun_portal_pc?ac_id=1&theme=pro`
 - 当前运营商：电信 `@ctcc`
 
-江西师大官方说明的校园无线认证入口为 `172.16.8.8`；当前配置同时兼容门户域名和旧 IP 入口。
+当前配置使用实测可响应的认证入口 `172.17.1.2/srun_portal_pc?ac_id=1&theme=pro`；旧门户域名和历史 IP 仍保留在绕过代理列表中，便于排错。
 
 ## Edge 一次性设置
 
@@ -37,9 +45,22 @@
 
 如果 Edge 能在认证页自动填入账号和密码，脚本就能自动提交。脚本只匹配配置中的门户域名，不会在普通网站运行。
 
-## 选择联网模式
+旧版 `engine/Start-CampusAutoLogin.ps1` 中的坐标集成仅作为历史实现保留，不要把它与当前的 `CoordinateClicker.ps1` 混用。
 
-工具提供两种模式：
+## 当前使用方式
+
+1. 手动打开 `172.17.1.2/srun_portal_pc?ac_id=1&theme=pro` 认证页面，并把 Edge 窗口和页面切到采集坐标时的位置。
+2. 双击桌面快捷方式“江西师范大学校园网一键连接”。
+3. 点击“开始按坐标点击”。
+4. 工具等待 8 秒，随后依次点击 8 个坐标，间隔 2 秒。
+
+工具完成后不会报告“认证成功”；请自行打开网页确认校园网是否已经可用。
+
+## 历史版本说明（已失效）
+
+下面的“选择联网模式”、任务注册和手动测试章节属于旧版实现，保留仅用于追溯；在当前环境中不要按这些章节判断自动连接已经可用。
+
+旧版工具曾提供两种模式：
 
 ### 一键联网（半自动）
 
@@ -55,10 +76,10 @@ Windows 登录后自动等待 `jxnu_stu` 并完成认证，不需要用户点击
 
 ```powershell
 # 创建桌面一键联网快捷方式，不注册开机任务
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Setup-JXNUAutoLogin.ps1 -Mode one-click
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File .\Setup-JXNUAutoLogin.ps1 -Mode one-click
 
 # 注册 Windows 登录后自动联网任务
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Setup-JXNUAutoLogin.ps1 -Mode automatic
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File .\Setup-JXNUAutoLogin.ps1 -Mode automatic
 ```
 
 ### 手动注册全自动任务
@@ -66,7 +87,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Setup-JXNUAutoLogin.ps
 在本目录执行（不会修改系统执行策略）：
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-JXNUAutoLoginTask.ps1
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-JXNUAutoLoginTask.ps1
 ```
 
 也可以直接双击 `Install-JXNUAutoLoginTask.cmd`。它只注册全自动任务，适合已经确定使用全自动模式的情况。
@@ -78,15 +99,29 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-JXNUAutoLoginT
 先不要重启，可以手动执行：
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Start-JXNUAutoLogin.ps1 -ForceOpen
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File .\Start-JXNUAutoLogin.ps1 -ForceOpen
 ```
 
 `-ForceOpen` 只会打开认证页；不会写入或输出密码。测试成功后再决定使用一键模式还是全自动模式。
 
+## 采集门户按钮的屏幕坐标
+
+如果需要记录认证页面上按钮的屏幕位置，可以双击 `Record-MousePosition.cmd`。
+
+该启动器会优先调用已安装的 PowerShell 7（`pwsh.exe`）；只有找不到 PowerShell 7 时才回退到 Windows PowerShell 5.1（`powershell.exe`）。
+
+- 按 `F1`：把当前鼠标位置复制到剪贴板，格式为 `X=1234, Y=567`；
+- 每次记录同时追加到本目录的 `mouse-positions.txt`，避免剪贴板被下一次记录覆盖；
+- 按 `Esc`：退出采集器。
+
+该工具只读取鼠标位置和写入本地剪贴板/记录文件，不会点击页面、不提交账号密码，也不会修改网络、VPN 或浏览器设置。
+
+坐标是相对于当前主屏幕左上角的屏幕坐标；采集和后续自动点击时应尽量保持相同的显示缩放、分辨率、浏览器窗口位置和页面布局。它适合作为采集/校准工具，不能单独保证页面改版后仍能准确点击。
+
 ## 卸载全自动任务
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Uninstall-JXNUAutoLoginTask.ps1
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File .\Uninstall-JXNUAutoLoginTask.ps1
 ```
 
 ## 为其他学校添加配置
@@ -97,7 +132,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Uninstall-JXNUAutoLogi
 4. 使用通用安装器注册对应配置：
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-CampusAutoLoginTask.ps1 -ConfigPath .\schools\example.json
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-CampusAutoLoginTask.ps1 -ConfigPath .\schools\example.json
 ```
 
 ## 兼容性边界
