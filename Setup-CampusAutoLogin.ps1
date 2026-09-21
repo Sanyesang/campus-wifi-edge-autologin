@@ -15,10 +15,10 @@ if (-not $TaskName) { $TaskName = "Campus Wi-Fi Auto Login - $($Config.id)" }
 
 $Installer = Join-Path $PSScriptRoot 'Install-CampusAutoLoginTask.ps1'
 $UiScript = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'CampusAutoLoginUI.ps1'))
-$PowerShell = (Get-Command powershell.exe).Source
+$PowerShell = (Get-Command pwsh.exe -ErrorAction Stop).Source
 
 if ($Mode -eq 'automatic') {
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Installer -ConfigPath $ConfigPath -TaskName $TaskName
+    & $PowerShell -NoProfile -ExecutionPolicy Bypass -File $Installer -ConfigPath $ConfigPath -TaskName $TaskName
     exit $LASTEXITCODE
 }
 
@@ -29,7 +29,7 @@ $shortcutPath = Join-Path $desktop "$($Config.schoolName)校园网一键连接.l
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $PowerShell
-$shortcut.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -ConfigPath "{1}"' -f $UiScript, $ConfigPath
+$shortcut.Arguments = '-NoProfile -STA -ExecutionPolicy Bypass -File "{0}" -ConfigPath "{1}"' -f $UiScript, $ConfigPath
 $shortcut.WorkingDirectory = $PSScriptRoot
 $shortcut.Description = '打开 {0} 校园网助手' -f $Config.schoolName
 $shortcut.IconLocation = (Join-Path ${env:SystemRoot} 'System32\netshell.dll') + ',0'

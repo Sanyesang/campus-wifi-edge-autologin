@@ -2,16 +2,32 @@
   "id": "jxnu-stu",
   "schoolName": "江西师范大学",
   "ssid": "jxnu_stu",
-  "portalUrl": "http://portal.jxnu.edu.cn/srun_portal_pc?ac_id=1&theme=pro",
+  "portalUrl": "http://172.17.1.2/srun_portal_pc?ac_id=1&theme=pro",
   "bypassHosts": [
+    "172.17.1.2",
     "portal.jxnu.edu.cn",
     "172.16.8.8",
     "172.16.1.2"
   ],
   "operator": "@ctcc",
+  "coordinateAutomation": {
+    "enabled": true,
+    "initialDelaySeconds": 8,
+    "delaySeconds": 2,
+    "postThirdClickDelaySeconds": 5,
+    "clicks": [
+      { "x": 1793, "y": 1049 },
+      { "x": 1633, "y": 737 },
+      { "x": 1655, "y": 737 },
+      { "x": 1341, "y": 356 },
+      { "x": 1334, "y": 424 },
+      { "x": 1037, "y": 619 },
+      { "x": 1107, "y": 681 },
+      { "x": 1894, "y": 14 }
+    ]
+  },
   "internetCheck": {
     "url": "http://connectivitycheck.gstatic.com/generate_204",
     "expectedStatus": 204
   }
 }
-

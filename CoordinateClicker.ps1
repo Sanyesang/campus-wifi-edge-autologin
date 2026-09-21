@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [int]$InitialDelaySeconds = 8,
-    [int]$ClickDelaySeconds = 2
+    [int]$ClickDelaySeconds = 2,
+    [int]$AfterThirdClickDelaySeconds = 5
 )
 
 $ErrorActionPreference = 'Stop'
@@ -61,7 +62,7 @@ $title.Location = New-Object System.Drawing.Point(155, 28)
 $form.Controls.Add($title)
 
 $hint = New-Object System.Windows.Forms.Label
-$hint.Text = "请先把认证页面切到前台，然后点击开始$([Environment]::NewLine)启动后等待 $InitialDelaySeconds 秒，每次点击间隔 $ClickDelaySeconds 秒"
+$hint.Text = "请先点击开始$([Environment]::NewLine)启动后等待 $InitialDelaySeconds 秒；普通间隔 $ClickDelaySeconds 秒，第三次点击后等待 $AfterThirdClickDelaySeconds 秒"
 $hint.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
 $hint.ForeColor = [System.Drawing.Color]::FromArgb(90, 105, 120)
 $hint.AutoSize = $false
@@ -169,8 +170,14 @@ $timer.Add_Tick({
             $current = $script:index + 1
             Invoke-PointClick -Point $point
             $script:index++
-            $status.Text = "已点击 $current/$($points.Count)：X=$($point.X), Y=$($point.Y)"
-            $script:nextActionAt = (Get-Date).AddSeconds([Math]::Max(0, $ClickDelaySeconds))
+            $waitSeconds = $ClickDelaySeconds
+            if ($current -eq 3) {
+                $waitSeconds = $AfterThirdClickDelaySeconds
+                $status.Text = "已点击 $current/$($points.Count)，等待浏览器打开页面 $waitSeconds 秒..."
+            } else {
+                $status.Text = "已点击 $current/$($points.Count)：X=$($point.X), Y=$($point.Y)"
+            }
+            $script:nextActionAt = (Get-Date).AddSeconds([Math]::Max(0, $waitSeconds))
         }
     } catch {
         $timer.Stop()

@@ -6,6 +6,7 @@
 // @match        http://portal.jxnu.edu.cn/*
 // @match        http://172.16.8.8/*
 // @match        http://172.16.1.2/*
+// @match        http://172.17.1.2/*
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
@@ -80,4 +81,3 @@
     window.setTimeout(() => observer.disconnect(), MAX_WAIT_MS + 2_000);
     trySubmit();
 })();
-

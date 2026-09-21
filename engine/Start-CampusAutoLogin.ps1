@@ -21,6 +21,8 @@ $BypassList = (@($Config.bypassHosts) -join ';')
 $CheckUrl = [string]$Config.internetCheck.url
 $ExpectedStatus = [string]$Config.internetCheck.expectedStatus
 $ProfileId = [string]$Config.id
+$CoordinateAutomation = $Config.coordinateAutomation
+$CoordinateClicksEnabled = $CoordinateAutomation -and $CoordinateAutomation.enabled -eq $true
 
 $LogDir = Join-Path $env:LOCALAPPDATA 'CampusAutoLogin'
 $LogPath = Join-Path $LogDir "$ProfileId.log"
@@ -53,7 +55,61 @@ function Get-EdgePath {
     return $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
 }
 
-Write-Status "started profile=$ProfileId mode=$Mode"
+function Invoke-CoordinateClickSequence {
+    param(
+        [Parameter(Mandatory = $true)]$Automation
+    )
+
+    if (-not ('CampusAutoLogin.NativeMethods' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace CampusAutoLogin {
+    public static class NativeMethods {
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool SetCursorPos(int x, int y);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
+    }
+}
+'@
+    }
+
+    $initialDelay = [int]$Automation.initialDelaySeconds
+    $clickDelay = [int]$Automation.delaySeconds
+    $postThirdClickDelay = [int]$Automation.postThirdClickDelaySeconds
+    if ($initialDelay -gt 0) { Start-Sleep -Seconds $initialDelay }
+
+    $index = 0
+    foreach ($point in @($Automation.clicks)) {
+        $index++
+        $x = [int]$point.x
+        $y = [int]$point.y
+        Write-Status ("coordinate click {0}: X={1}, Y={2}" -f $index, $x, $y)
+        if (-not [CampusAutoLogin.NativeMethods]::SetCursorPos($x, $y)) {
+            throw "无法移动鼠标到坐标 X=$x, Y=$y"
+        }
+        Start-Sleep -Milliseconds 120
+        [CampusAutoLogin.NativeMethods]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+        [CampusAutoLogin.NativeMethods]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+        if ($index -lt @($Automation.clicks).Count) {
+            $waitSeconds = $clickDelay
+            if ($index -eq 3 -and $postThirdClickDelay -gt 0) {
+                $waitSeconds = $postThirdClickDelay
+                Write-Status ("after third click: waiting {0}s for browser page" -f $waitSeconds)
+            }
+            if ($waitSeconds -gt 0) {
+                Start-Sleep -Seconds $waitSeconds
+            }
+        }
+    }
+    Write-Status ("coordinate click sequence finished: count={0}, delay={1}s, afterThirdClickDelay={2}s" -f $index, $clickDelay, $postThirdClickDelay)
+}
+
+Write-Status ("started profile={0} mode={1} portal={2} coordinateEnabled={3} initialDelay={4}s clickDelay={5}s afterThirdClickDelay={6}s" -f `
+        $ProfileId, $Mode, $PortalUrl, $CoordinateClicksEnabled, $CoordinateAutomation.initialDelaySeconds, $CoordinateAutomation.delaySeconds, $CoordinateAutomation.postThirdClickDelaySeconds)
 $deadline = (Get-Date).AddSeconds($WaitSeconds)
 do {
     $wlan = Get-WlanState
@@ -64,7 +120,7 @@ do {
 $wlan = Get-WlanState
 if ($wlan.SSID -ne $TargetSsid -or $wlan.State -ne 'connected') {
     Write-Status ("skip: WLAN not connected (SSID={0}, State={1})" -f $wlan.SSID, $wlan.State)
-    exit 0
+    exit 2
 }
 
 if (-not $ForceOpen -and (Test-Internet)) {
@@ -84,7 +140,21 @@ $args += $PortalUrl
 Start-Process -FilePath $edge -ArgumentList $args | Out-Null
 Write-Status 'opened portal in Edge'
 
-# 浏览器用户脚本负责选择运营商和提交；本脚本不读取账号密码。
+# 坐标模式由本地鼠标点击完成；本脚本不读取、保存或输出账号密码。
+if ($CoordinateClicksEnabled -and -not $ForceOpen) {
+    try {
+        Invoke-CoordinateClickSequence -Automation $CoordinateAutomation
+    } catch {
+        Write-Status ("coordinate click sequence failed: {0}" -f $_.Exception.Message)
+        exit 2
+    }
+} elseif ($CoordinateClicksEnabled -and $ForceOpen) {
+    Write-Status 'force-open mode: skipped coordinate click sequence'
+} else {
+    # 非坐标模式由浏览器用户脚本负责选择运营商和提交。
+    Write-Status 'waiting for browser userscript to submit'
+}
+
 $checkDeadline = (Get-Date).AddSeconds(90)
 do {
     Start-Sleep -Seconds 3

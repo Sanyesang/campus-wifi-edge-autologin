@@ -12,7 +12,7 @@ $Config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom
 if (-not $TaskName) { $TaskName = "Campus Wi-Fi Auto Login - $($Config.id)" }
 
 $Launcher = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'engine\Start-CampusAutoLogin.ps1'))
-$PowerShell = (Get-Command powershell.exe).Source
+$PowerShell = (Get-Command pwsh.exe -ErrorAction Stop).Source
 $Action = New-ScheduledTaskAction -Execute $PowerShell -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Launcher`" -ConfigPath `"$ConfigPath`" -Mode automatic"
 $Trigger = New-ScheduledTaskTrigger -AtLogOn -RandomDelay (New-TimeSpan -Seconds 30)
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable

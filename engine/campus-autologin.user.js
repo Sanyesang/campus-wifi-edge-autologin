@@ -6,6 +6,7 @@
 // @match        http://portal.jxnu.edu.cn/*
 // @match        http://172.16.8.8/*
 // @match        http://172.16.1.2/*
+// @match        http://172.17.1.2/*
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
@@ -34,6 +35,15 @@
             protocol: '#protocol'
         },
         '172.16.1.2': {
+            operator: '@ctcc',
+            operatorText: '电信',
+            username: '#username',
+            password: '#password',
+            operatorSelect: '#domain',
+            login: '#login-account, #login, .btn-login',
+            protocol: '#protocol'
+        },
+        '172.17.1.2': {
             operator: '@ctcc',
             operatorText: '电信',
             username: '#username',

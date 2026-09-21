@@ -19,7 +19,7 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 $Config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $UiScriptPath = [System.IO.Path]::GetFullPath($PSCommandPath)
 $EngineScript = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'engine\Start-CampusAutoLogin.ps1'))
-$PowerShell = (Get-Command powershell.exe).Source
+$PowerShell = (Get-Command pwsh.exe -ErrorAction Stop).Source
 $StartupDir = [Environment]::GetFolderPath('Startup')
 $StartupShortcutPath = Join-Path $StartupDir "$($Config.schoolName)校园网助手.lnk"
 $LogPath = Join-Path (Join-Path $env:LOCALAPPDATA 'CampusAutoLogin') "$($Config.id).log"
@@ -49,7 +49,7 @@ function Set-StartupEnabled {
     param([bool]$Enabled)
 
     if ($Enabled) {
-        $args = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -ConfigPath "{1}" -Startup' -f $UiScriptPath, $ConfigPath
+        $args = '-NoProfile -STA -ExecutionPolicy Bypass -File "{0}" -ConfigPath "{1}" -Startup' -f $UiScriptPath, $ConfigPath
         New-Shortcut -Path $StartupShortcutPath -TargetPath $PowerShell -Arguments $args `
             -WorkingDirectory $PSScriptRoot -Description "启动 $($Config.schoolName) 校园网助手" `
             -IconLocation "${env:SystemRoot}\System32\netshell.dll,0"
@@ -68,14 +68,28 @@ function Get-LastStatus {
 
 function Start-Connection {
     if ($script:ConnectionProcess -and -not $script:ConnectionProcess.HasExited) {
+        $statusLabel.Text = '连接流程已经在运行，请稍候…'
         return
     }
 
     $button.Enabled = $false
     $statusLabel.Text = '正在等待 Wi-Fi 并连接校园网…'
-    $argLine = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}" -ConfigPath "{1}" -Mode one-click' -f $EngineScript, $ConfigPath
-    $script:ConnectionProcess = Start-Process -FilePath $PowerShell -ArgumentList $argLine -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -PassThru
-    $statusTimer.Start()
+    try {
+        $arguments = @(
+            '-NoProfile',
+            '-WindowStyle', 'Hidden',
+            '-ExecutionPolicy', 'Bypass',
+            '-File', $EngineScript,
+            '-ConfigPath', $ConfigPath,
+            '-Mode', 'one-click'
+        )
+        $script:ConnectionProcess = Start-Process -FilePath $PowerShell -ArgumentList $arguments `
+            -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -PassThru -ErrorAction Stop
+        $statusTimer.Start()
+    } catch {
+        $button.Enabled = $true
+        $statusLabel.Text = "启动连接流程失败：$($_.Exception.Message)"
+    }
 }
 
 $form = New-Object System.Windows.Forms.Form
@@ -165,6 +179,8 @@ $statusTimer.Add_Tick({
         $button.Enabled = $true
         if ($script:ConnectionProcess.ExitCode -eq 0) {
             $statusLabel.Text = '连接流程已完成，请查看 Edge 或尝试打开网页。'
+        } elseif ($script:ConnectionProcess.ExitCode -eq 1) {
+            $statusLabel.Text = '认证超时，请确认页面已加载且坐标仍与当前屏幕匹配。'
         } elseif ($script:ConnectionProcess.ExitCode -ne 1) {
             $statusLabel.Text = "连接失败，退出码：$($script:ConnectionProcess.ExitCode)"
         }

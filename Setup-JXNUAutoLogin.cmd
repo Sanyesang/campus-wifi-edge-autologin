@@ -6,13 +6,12 @@ if errorlevel 2 goto automatic
 if errorlevel 1 goto oneclick
 
 :oneclick
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Setup-JXNUAutoLogin.ps1" -Mode one-click
+pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0Setup-JXNUAutoLogin.ps1" -Mode one-click
 goto end
 
 :automatic
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Setup-JXNUAutoLogin.ps1" -Mode automatic
+pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0Setup-JXNUAutoLogin.ps1" -Mode automatic
 goto end
 
 :end
 if errorlevel 1 pause
-
