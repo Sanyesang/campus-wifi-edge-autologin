@@ -269,10 +269,12 @@ $timer.Add_Tick({
         if ($script:phase -eq 'clicking' -and $now -ge $script:nextActionAt) {
             if ($script:index -ge $points.Count) {
                 $timer.Stop()
+                Close-WaitOverlay
                 $script:phase = 'idle'
                 $startButton.Enabled = $true
                 $stopButton.Enabled = $false
                 $status.Text = "已完成 $($points.Count) 次坐标点击。"
+                $form.Close()
                 return
             }
 
@@ -307,3 +309,4 @@ $form.Add_FormClosing({
 })
 
 [void]$form.ShowDialog()
+exit 0
