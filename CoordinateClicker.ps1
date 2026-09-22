@@ -2,7 +2,7 @@
 param(
     [int]$InitialDelaySeconds = 8,
     [int]$ClickDelaySeconds = 2,
-    [int]$AfterThirdClickDelaySeconds = 5
+    [int]$AfterThirdClickDelaySeconds = 8
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,6 +26,35 @@ namespace CoordinateClicker {
 
         [DllImport("user32.dll")]
         public static extern bool SetProcessDPIAware();
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool SetWindowPos(
+            IntPtr hWnd,
+            IntPtr hWndInsertAfter,
+            int x,
+            int y,
+            int cx,
+            int cy,
+            uint flags);
+
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr", SetLastError = true)]
+        public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
+        public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr newStyle);
+
+        public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+        public const int GWL_EXSTYLE = -20;
+        public const long WS_EX_NOACTIVATE = 0x08000000L;
+        public const long WS_EX_TOOLWINDOW = 0x00000080L;
+        public const uint SWP_NOACTIVATE = 0x0010;
+        public const uint SWP_SHOWWINDOW = 0x0040;
     }
 }
 '@
@@ -106,9 +135,77 @@ $timer.Interval = 100
 $script:phase = 'idle'
 $script:index = 0
 $script:nextActionAt = $null
+$script:waitOverlay = $null
+$script:waitOverlayLabel = $null
+
+function Close-WaitOverlay {
+    if ($null -ne $script:waitOverlay) {
+        $script:waitOverlay.Close()
+        $script:waitOverlay.Dispose()
+        $script:waitOverlay = $null
+        $script:waitOverlayLabel = $null
+    }
+}
+
+function Show-WaitOverlay {
+    param([Parameter(Mandatory = $true)][int]$Seconds)
+
+    Close-WaitOverlay
+
+    $previousForeground = [CoordinateClicker.NativeMethods]::GetForegroundWindow()
+    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    $overlay = New-Object System.Windows.Forms.Form
+    $overlay.FormBorderStyle = 'None'
+    $overlay.StartPosition = 'Manual'
+    $overlay.Bounds = $screen
+    $overlay.BackColor = [System.Drawing.Color]::FromArgb(24, 31, 42)
+    $overlay.Opacity = 0.8
+    $overlay.ShowInTaskbar = $false
+    $overlay.TopMost = $true
+    $overlay.ControlBox = $false
+
+    $label = New-Object System.Windows.Forms.Label
+    $label.Dock = 'Fill'
+    $label.TextAlign = 'MiddleCenter'
+    $label.ForeColor = [System.Drawing.Color]::White
+    $label.BackColor = [System.Drawing.Color]::Transparent
+    $label.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 38, [System.Drawing.FontStyle]::Bold)
+    $label.Text = "等待页面响应`r`n$Seconds"
+    $overlay.Controls.Add($label)
+
+    $script:waitOverlay = $overlay
+    $script:waitOverlayLabel = $label
+    $overlayStyle = [CoordinateClicker.NativeMethods]::GetWindowLongPtr($overlay.Handle, [CoordinateClicker.NativeMethods]::GWL_EXSTYLE).ToInt64()
+    $overlayStyle = $overlayStyle -bor [CoordinateClicker.NativeMethods]::WS_EX_NOACTIVATE -bor [CoordinateClicker.NativeMethods]::WS_EX_TOOLWINDOW
+    [void][CoordinateClicker.NativeMethods]::SetWindowLongPtr(
+        $overlay.Handle,
+        [CoordinateClicker.NativeMethods]::GWL_EXSTYLE,
+        [IntPtr]$overlayStyle)
+    $overlay.Show()
+    [void][CoordinateClicker.NativeMethods]::SetWindowPos(
+        $overlay.Handle,
+        [CoordinateClicker.NativeMethods]::HWND_TOPMOST,
+        $screen.X,
+        $screen.Y,
+        $screen.Width,
+        $screen.Height,
+        [CoordinateClicker.NativeMethods]::SWP_NOACTIVATE -bor [CoordinateClicker.NativeMethods]::SWP_SHOWWINDOW)
+    if ($previousForeground -ne [IntPtr]::Zero) {
+        [void][CoordinateClicker.NativeMethods]::SetForegroundWindow($previousForeground)
+    }
+}
+
+function Update-WaitOverlay {
+    param([Parameter(Mandatory = $true)][int]$RemainingSeconds)
+
+    if ($null -ne $script:waitOverlayLabel) {
+        $script:waitOverlayLabel.Text = "等待页面响应`r`n$RemainingSeconds"
+    }
+}
 
 function Stop-Sequence {
     $timer.Stop()
+    Close-WaitOverlay
     $script:phase = 'idle'
     $script:index = 0
     $startButton.Enabled = $true
@@ -156,6 +253,19 @@ $timer.Add_Tick({
             $script:nextActionAt = $now
         }
 
+        if ($script:phase -eq 'third-wait') {
+            $remaining = [Math]::Ceiling(($script:nextActionAt - $now).TotalSeconds)
+            if ($remaining -gt 0) {
+                Update-WaitOverlay -RemainingSeconds $remaining
+                $status.Text = "等待页面响应：$remaining 秒"
+                return
+            }
+
+            Close-WaitOverlay
+            $script:phase = 'clicking'
+            $script:nextActionAt = $now
+        }
+
         if ($script:phase -eq 'clicking' -and $now -ge $script:nextActionAt) {
             if ($script:index -ge $points.Count) {
                 $timer.Stop()
@@ -173,7 +283,9 @@ $timer.Add_Tick({
             $waitSeconds = $ClickDelaySeconds
             if ($current -eq 3) {
                 $waitSeconds = $AfterThirdClickDelaySeconds
-                $status.Text = "已点击 $current/$($points.Count)，等待浏览器打开页面 $waitSeconds 秒..."
+                Show-WaitOverlay -Seconds $waitSeconds
+                $script:phase = 'third-wait'
+                $status.Text = "等待页面响应：$waitSeconds 秒"
             } else {
                 $status.Text = "已点击 $current/$($points.Count)：X=$($point.X), Y=$($point.Y)"
             }
@@ -181,6 +293,7 @@ $timer.Add_Tick({
         }
     } catch {
         $timer.Stop()
+        Close-WaitOverlay
         $script:phase = 'idle'
         $startButton.Enabled = $true
         $stopButton.Enabled = $false
@@ -190,6 +303,7 @@ $timer.Add_Tick({
 
 $form.Add_FormClosing({
     $timer.Stop()
+    Close-WaitOverlay
 })
 
 [void]$form.ShowDialog()
