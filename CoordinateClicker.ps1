@@ -62,21 +62,29 @@ namespace CoordinateClicker {
 
 [void][CoordinateClicker.NativeMethods]::SetProcessDPIAware()
 
-$points = @(
+$script:networkStartClicks = @(
     [pscustomobject]@{ X = 1793; Y = 1049 },
     [pscustomobject]@{ X = 1633; Y = 737 },
-    [pscustomobject]@{ X = 1655; Y = 737 },
-    [pscustomobject]@{ X = 1341; Y = 356 },
-    [pscustomobject]@{ X = 1334; Y = 424 },
+    [pscustomobject]@{ X = 1655; Y = 737 }
+)
+
+$script:operatorMenuClick = [pscustomobject]@{ X = 1341; Y = 356 }
+$script:operatorClicks = @{
+    '移动' = [pscustomobject]@{ X = 1336; Y = 400 }
+    '电信' = [pscustomobject]@{ X = 1334; Y = 424 }
+}
+$script:portalActionClicks = @(
     [pscustomobject]@{ X = 1037; Y = 619 },
     [pscustomobject]@{ X = 1107; Y = 681 },
     [pscustomobject]@{ X = 1894; Y = 14 }
 )
+$script:activePoints = @()
+$script:selectedOperator = ''
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = '江西师范大学 校园网坐标点击器'
 $form.StartPosition = 'CenterScreen'
-$form.ClientSize = New-Object System.Drawing.Size(500, 315)
+$form.ClientSize = New-Object System.Drawing.Size(500, 360)
 $form.FormBorderStyle = 'FixedSingle'
 $form.MaximizeBox = $false
 $form.MinimizeBox = $true
@@ -87,7 +95,7 @@ $title.Text = '校园网坐标点击器'
 $title.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 17, [System.Drawing.FontStyle]::Bold)
 $title.ForeColor = [System.Drawing.Color]::FromArgb(29, 53, 87)
 $title.AutoSize = $true
-$title.Location = New-Object System.Drawing.Point(155, 28)
+$title.Location = New-Object System.Drawing.Point(155, 22)
 $form.Controls.Add($title)
 
 $hint = New-Object System.Windows.Forms.Label
@@ -96,19 +104,47 @@ $hint.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
 $hint.ForeColor = [System.Drawing.Color]::FromArgb(90, 105, 120)
 $hint.AutoSize = $false
 $hint.TextAlign = 'MiddleCenter'
-$hint.Size = New-Object System.Drawing.Size(430, 45)
-$hint.Location = New-Object System.Drawing.Point(35, 72)
+$hint.Size = New-Object System.Drawing.Size(430, 48)
+$hint.Location = New-Object System.Drawing.Point(35, 62)
 $form.Controls.Add($hint)
 
+$operatorGroup = New-Object System.Windows.Forms.GroupBox
+$operatorGroup.Text = '选择校园卡运营商'
+$operatorGroup.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+$operatorGroup.Size = New-Object System.Drawing.Size(430, 58)
+$operatorGroup.Location = New-Object System.Drawing.Point(35, 118)
+$form.Controls.Add($operatorGroup)
+
+$mobileRadio = New-Object System.Windows.Forms.RadioButton
+$mobileRadio.Text = '移动'
+$mobileRadio.AutoSize = $true
+$mobileRadio.Location = New-Object System.Drawing.Point(38, 25)
+$operatorGroup.Controls.Add($mobileRadio)
+
+$telecomRadio = New-Object System.Windows.Forms.RadioButton
+$telecomRadio.Text = '电信'
+$telecomRadio.AutoSize = $true
+$telecomRadio.Checked = $true
+$telecomRadio.Location = New-Object System.Drawing.Point(180, 25)
+$operatorGroup.Controls.Add($telecomRadio)
+
+$unicomRadio = New-Object System.Windows.Forms.RadioButton
+$unicomRadio.Text = '联通'
+$unicomRadio.AutoSize = $true
+$unicomRadio.Location = New-Object System.Drawing.Point(322, 25)
+$operatorGroup.Controls.Add($unicomRadio)
+
+$script:operatorOptions = @($mobileRadio, $telecomRadio, $unicomRadio)
+
 $startButton = New-Object System.Windows.Forms.Button
-$startButton.Text = '开始按坐标点击'
+$startButton.Text = '一键连接校园网'
 $startButton.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 14, [System.Drawing.FontStyle]::Bold)
 $startButton.ForeColor = [System.Drawing.Color]::White
 $startButton.BackColor = [System.Drawing.Color]::FromArgb(22, 119, 153)
 $startButton.FlatStyle = 'Flat'
 $startButton.FlatAppearance.BorderSize = 0
 $startButton.Size = New-Object System.Drawing.Size(280, 62)
-$startButton.Location = New-Object System.Drawing.Point(110, 130)
+$startButton.Location = New-Object System.Drawing.Point(110, 190)
 $startButton.Cursor = [System.Windows.Forms.Cursors]::Hand
 $form.Controls.Add($startButton)
 
@@ -116,7 +152,7 @@ $stopButton = New-Object System.Windows.Forms.Button
 $stopButton.Text = '停止'
 $stopButton.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
 $stopButton.Size = New-Object System.Drawing.Size(80, 30)
-$stopButton.Location = New-Object System.Drawing.Point(210, 202)
+$stopButton.Location = New-Object System.Drawing.Point(210, 262)
 $stopButton.Enabled = $false
 $form.Controls.Add($stopButton)
 
@@ -127,7 +163,7 @@ $status.ForeColor = [System.Drawing.Color]::FromArgb(90, 105, 120)
 $status.AutoSize = $false
 $status.TextAlign = 'MiddleCenter'
 $status.Size = New-Object System.Drawing.Size(430, 42)
-$status.Location = New-Object System.Drawing.Point(35, 245)
+$status.Location = New-Object System.Drawing.Point(35, 303)
 $form.Controls.Add($status)
 
 $timer = New-Object System.Windows.Forms.Timer
@@ -210,6 +246,7 @@ function Stop-Sequence {
     $script:index = 0
     $startButton.Enabled = $true
     $stopButton.Enabled = $false
+    foreach ($option in $script:operatorOptions) { $option.Enabled = $true }
     $status.Text = '已停止，准备就绪。'
 }
 
@@ -228,12 +265,30 @@ function Invoke-PointClick {
 $startButton.Add_Click({
     if ($script:phase -ne 'idle') { return }
 
+    if ($mobileRadio.Checked) {
+        $script:selectedOperator = '移动'
+    } elseif ($unicomRadio.Checked) {
+        $script:selectedOperator = '联通'
+    } else {
+        $script:selectedOperator = '电信'
+    }
+
+    $activePoints = [System.Collections.Generic.List[object]]::new()
+    foreach ($point in $script:networkStartClicks) { $activePoints.Add($point) }
+    if ($script:selectedOperator -ne '联通') {
+        $activePoints.Add($script:operatorMenuClick)
+        $activePoints.Add($script:operatorClicks[$script:selectedOperator])
+    }
+    foreach ($point in $script:portalActionClicks) { $activePoints.Add($point) }
+    $script:activePoints = $activePoints
+    foreach ($option in $script:operatorOptions) { $option.Enabled = $false }
+
     $script:phase = 'initial'
     $script:index = 0
     $script:nextActionAt = (Get-Date).AddSeconds([Math]::Max(0, $InitialDelaySeconds))
     $startButton.Enabled = $false
     $stopButton.Enabled = $true
-    $status.Text = "准备开始，剩余 $InitialDelaySeconds 秒..."
+    $status.Text = "准备连接：$($script:selectedOperator)校园宽带；共 $($script:activePoints.Count) 次点击。"
     $timer.Start()
 })
 
@@ -267,18 +322,18 @@ $timer.Add_Tick({
         }
 
         if ($script:phase -eq 'clicking' -and $now -ge $script:nextActionAt) {
-            if ($script:index -ge $points.Count) {
+            if ($script:index -ge $script:activePoints.Count) {
                 $timer.Stop()
                 Close-WaitOverlay
                 $script:phase = 'idle'
                 $startButton.Enabled = $true
                 $stopButton.Enabled = $false
-                $status.Text = "已完成 $($points.Count) 次坐标点击。"
+                $status.Text = "已完成 $($script:activePoints.Count) 次坐标点击（$($script:selectedOperator)）。"
                 $form.Close()
                 return
             }
 
-            $point = $points[$script:index]
+            $point = $script:activePoints[$script:index]
             $current = $script:index + 1
             Invoke-PointClick -Point $point
             $script:index++
@@ -289,7 +344,7 @@ $timer.Add_Tick({
                 $script:phase = 'third-wait'
                 $status.Text = "等待页面响应：$waitSeconds 秒"
             } else {
-                $status.Text = "已点击 $current/$($points.Count)：X=$($point.X), Y=$($point.Y)"
+                $status.Text = "已点击 $current/$($script:activePoints.Count)：X=$($point.X), Y=$($point.Y)"
             }
             $script:nextActionAt = (Get-Date).AddSeconds([Math]::Max(0, $waitSeconds))
         }
@@ -299,6 +354,7 @@ $timer.Add_Tick({
         $script:phase = 'idle'
         $startButton.Enabled = $true
         $stopButton.Enabled = $false
+        foreach ($option in $script:operatorOptions) { $option.Enabled = $true }
         $status.Text = "点击失败：$($_.Exception.Message)"
     }
 })
