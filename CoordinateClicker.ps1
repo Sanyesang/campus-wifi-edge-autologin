@@ -2,7 +2,8 @@
 param(
     [int]$InitialDelaySeconds = 8,
     [int]$ClickDelaySeconds = 2,
-    [int]$AfterThirdClickDelaySeconds = 8
+    [int]$AfterThirdClickDelaySeconds = 8,
+    [switch]$AutoStart
 )
 
 $ErrorActionPreference = 'Stop'
@@ -10,6 +11,133 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
+
+$script:validOperators = @('移动', '电信', '联通')
+$script:scriptPath = [System.IO.Path]::GetFullPath($PSCommandPath)
+$script:settingsDirectory = Join-Path $env:LOCALAPPDATA 'JXNUCampusClicker'
+$script:settingsPath = Join-Path $script:settingsDirectory 'settings.json'
+$script:startupShortcutPath = Join-Path (
+    [Environment]::GetFolderPath([Environment+SpecialFolder]::Startup)
+) '江西师范大学校园网一键连接.lnk'
+$script:selectedOperator = ''
+$script:settingsLoadError = ''
+$script:autoStartConfigured = $false
+
+function Get-SavedOperator {
+    if (-not (Test-Path -LiteralPath $script:settingsPath)) {
+        return ''
+    }
+
+    $settings = Get-Content -LiteralPath $script:settingsPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    $operator = [string]$settings.selectedOperator
+    if ($operator -notin $script:validOperators) {
+        throw '已保存的运营商设置无效，请重新打开工具并选择运营商。'
+    }
+
+    return $operator
+}
+
+function Save-SelectedOperator {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('移动', '电信', '联通')]
+        [string]$Operator
+    )
+
+    if (-not (Test-Path -LiteralPath $script:settingsDirectory)) {
+        New-Item -ItemType Directory -Path $script:settingsDirectory -Force | Out-Null
+    }
+
+    $settings = [ordered]@{ selectedOperator = $Operator } | ConvertTo-Json
+    [System.IO.File]::WriteAllText(
+        $script:settingsPath,
+        $settings,
+        [System.Text.UTF8Encoding]::new($false))
+    $script:selectedOperator = $Operator
+}
+
+function Get-StartupShortcutInfo {
+    if (-not (Test-Path -LiteralPath $script:startupShortcutPath)) {
+        return $null
+    }
+
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($script:startupShortcutPath)
+    return [pscustomobject]@{
+        TargetPath = [string]$shortcut.TargetPath
+        Arguments  = [string]$shortcut.Arguments
+    }
+}
+
+function Test-OwnedStartupShortcut {
+    $shortcut = Get-StartupShortcutInfo
+    if ($null -eq $shortcut) {
+        return $false
+    }
+
+    $isPowerShell7 = [System.IO.Path]::GetFileName($shortcut.TargetPath) -ieq 'pwsh.exe'
+    $isClickerScript = $shortcut.Arguments.IndexOf(
+        $script:scriptPath,
+        [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+    $startsAutomatically = $shortcut.Arguments -match '(?i)(?:^|\s)-AutoStart(?:\s|$)'
+    return $isPowerShell7 -and $isClickerScript -and $startsAutomatically
+}
+
+function Test-CurrentAutoStartShortcut {
+    return Test-OwnedStartupShortcut
+}
+
+function Install-AutoStartShortcut {
+    if ($script:selectedOperator -notin $script:validOperators) {
+        throw '请先选择移动、电信或联通，再开启开机自启。'
+    }
+
+    if ((Test-Path -LiteralPath $script:startupShortcutPath) -and -not (Test-OwnedStartupShortcut)) {
+        throw '启动文件夹中已有同名的非本工具快捷方式；为避免覆盖它，未开启开机自启。'
+    }
+
+    $powerShellPath = (Get-Command pwsh.exe -ErrorAction Stop).Source
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($script:startupShortcutPath)
+    $quotedScriptPath = [char]34 + $script:scriptPath + [char]34
+    $shortcut.TargetPath = $powerShellPath
+    $shortcut.Arguments = "-NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File $quotedScriptPath -AutoStart"
+    $shortcut.WorkingDirectory = Split-Path -Parent $script:scriptPath
+    $shortcut.Description = '登录 Windows 后按已保存的运营商自动连接江西师范大学校园网'
+    $shortcut.Save()
+}
+
+function Remove-AutoStartShortcut {
+    if (-not (Test-Path -LiteralPath $script:startupShortcutPath)) {
+        return
+    }
+
+    if (-not (Test-OwnedStartupShortcut)) {
+        throw '启动文件夹中的同名文件不是本工具创建的快捷方式；为避免误删，未移除。'
+    }
+
+    Remove-Item -LiteralPath $script:startupShortcutPath
+}
+
+try {
+    $script:selectedOperator = Get-SavedOperator
+    $script:autoStartConfigured = Test-CurrentAutoStartShortcut
+} catch {
+    $script:settingsLoadError = $_.Exception.Message
+}
+
+if ($AutoStart -and ($script:selectedOperator -notin $script:validOperators)) {
+    $message = "自动连接未启动：无法读取已保存的运营商设置。请手动打开工具，重新选择运营商并检查开机自启。"
+    if ($script:settingsLoadError) {
+        $message += [Environment]::NewLine + [Environment]::NewLine + $script:settingsLoadError
+    }
+    [System.Windows.Forms.MessageBox]::Show(
+        $message,
+        '校园网自动连接',
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+    exit 1
+}
 
 if (-not ('CoordinateClicker.NativeMethods' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -79,12 +207,11 @@ $script:portalActionClicks = @(
     [pscustomobject]@{ X = 1894; Y = 14 }
 )
 $script:activePoints = @()
-$script:selectedOperator = ''
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = '江西师范大学 校园网坐标点击器'
 $form.StartPosition = 'CenterScreen'
-$form.ClientSize = New-Object System.Drawing.Size(500, 360)
+$form.ClientSize = New-Object System.Drawing.Size(500, 390)
 $form.FormBorderStyle = 'FixedSingle'
 $form.MaximizeBox = $false
 $form.MinimizeBox = $true
@@ -124,7 +251,6 @@ $operatorGroup.Controls.Add($mobileRadio)
 $telecomRadio = New-Object System.Windows.Forms.RadioButton
 $telecomRadio.Text = '电信'
 $telecomRadio.AutoSize = $true
-$telecomRadio.Checked = $true
 $telecomRadio.Location = New-Object System.Drawing.Point(180, 25)
 $operatorGroup.Controls.Add($telecomRadio)
 
@@ -136,6 +262,21 @@ $operatorGroup.Controls.Add($unicomRadio)
 
 $script:operatorOptions = @($mobileRadio, $telecomRadio, $unicomRadio)
 
+$autoStartCheckBox = New-Object System.Windows.Forms.CheckBox
+$autoStartCheckBox.Text = '开机自启（登录 Windows 后按所选运营商自动连接）'
+$autoStartCheckBox.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+$autoStartCheckBox.AutoSize = $true
+$autoStartCheckBox.Location = New-Object System.Drawing.Point(35, 184)
+$autoStartCheckBox.Checked = $script:autoStartConfigured
+$autoStartCheckBox.Enabled = $script:selectedOperator -in $script:validOperators
+$form.Controls.Add($autoStartCheckBox)
+
+switch ($script:selectedOperator) {
+    '移动' { $mobileRadio.Checked = $true }
+    '电信' { $telecomRadio.Checked = $true }
+    '联通' { $unicomRadio.Checked = $true }
+}
+
 $startButton = New-Object System.Windows.Forms.Button
 $startButton.Text = '一键连接校园网'
 $startButton.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 14, [System.Drawing.FontStyle]::Bold)
@@ -144,26 +285,33 @@ $startButton.BackColor = [System.Drawing.Color]::FromArgb(22, 119, 153)
 $startButton.FlatStyle = 'Flat'
 $startButton.FlatAppearance.BorderSize = 0
 $startButton.Size = New-Object System.Drawing.Size(280, 62)
-$startButton.Location = New-Object System.Drawing.Point(110, 190)
+$startButton.Location = New-Object System.Drawing.Point(110, 215)
 $startButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+$startButton.Enabled = $script:selectedOperator -in $script:validOperators
 $form.Controls.Add($startButton)
 
 $stopButton = New-Object System.Windows.Forms.Button
 $stopButton.Text = '停止'
 $stopButton.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
 $stopButton.Size = New-Object System.Drawing.Size(80, 30)
-$stopButton.Location = New-Object System.Drawing.Point(210, 262)
+$stopButton.Location = New-Object System.Drawing.Point(210, 286)
 $stopButton.Enabled = $false
 $form.Controls.Add($stopButton)
 
 $status = New-Object System.Windows.Forms.Label
-$status.Text = '准备就绪。'
+$status.Text = if ($script:settingsLoadError) {
+    "配置读取异常：$($script:settingsLoadError)"
+} elseif ($script:selectedOperator) {
+    "已记住运营商：$($script:selectedOperator)。"
+} else {
+    '请先选择运营商；选择会自动保存。'
+}
 $status.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
 $status.ForeColor = [System.Drawing.Color]::FromArgb(90, 105, 120)
 $status.AutoSize = $false
 $status.TextAlign = 'MiddleCenter'
 $status.Size = New-Object System.Drawing.Size(430, 42)
-$status.Location = New-Object System.Drawing.Point(35, 303)
+$status.Location = New-Object System.Drawing.Point(35, 328)
 $form.Controls.Add($status)
 
 $timer = New-Object System.Windows.Forms.Timer
@@ -262,15 +410,99 @@ function Invoke-PointClick {
     [CoordinateClicker.NativeMethods]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
 }
 
+$mobileRadio.Add_CheckedChanged({
+    if ($mobileRadio.Checked) {
+        try {
+            Save-SelectedOperator -Operator '移动'
+            $startButton.Enabled = $true
+            $autoStartCheckBox.Enabled = $true
+            $status.Text = '已保存运营商：移动。'
+        } catch {
+            $startButton.Enabled = $false
+            $autoStartCheckBox.Enabled = $false
+            [System.Windows.Forms.MessageBox]::Show(
+                "无法保存运营商设置：$($_.Exception.Message)",
+                '校园网坐标点击器',
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        }
+    }
+})
+
+$telecomRadio.Add_CheckedChanged({
+    if ($telecomRadio.Checked) {
+        try {
+            Save-SelectedOperator -Operator '电信'
+            $startButton.Enabled = $true
+            $autoStartCheckBox.Enabled = $true
+            $status.Text = '已保存运营商：电信。'
+        } catch {
+            $startButton.Enabled = $false
+            $autoStartCheckBox.Enabled = $false
+            [System.Windows.Forms.MessageBox]::Show(
+                "无法保存运营商设置：$($_.Exception.Message)",
+                '校园网坐标点击器',
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        }
+    }
+})
+
+$unicomRadio.Add_CheckedChanged({
+    if ($unicomRadio.Checked) {
+        try {
+            Save-SelectedOperator -Operator '联通'
+            $startButton.Enabled = $true
+            $autoStartCheckBox.Enabled = $true
+            $status.Text = '已保存运营商：联通。'
+        } catch {
+            $startButton.Enabled = $false
+            $autoStartCheckBox.Enabled = $false
+            [System.Windows.Forms.MessageBox]::Show(
+                "无法保存运营商设置：$($_.Exception.Message)",
+                '校园网坐标点击器',
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        }
+    }
+})
+
+$script:suppressAutoStartChange = $false
+$autoStartCheckBox.Add_CheckedChanged({
+    if ($script:suppressAutoStartChange) {
+        return
+    }
+
+    try {
+        if ($autoStartCheckBox.Checked) {
+            Install-AutoStartShortcut
+            $status.Text = "开机自启已启用：登录 Windows 后自动连接$($script:selectedOperator)校园宽带。"
+        } else {
+            Remove-AutoStartShortcut
+            $status.Text = '开机自启已关闭。'
+        }
+    } catch {
+        $script:suppressAutoStartChange = $true
+        $autoStartCheckBox.Checked = -not $autoStartCheckBox.Checked
+        $script:suppressAutoStartChange = $false
+        [System.Windows.Forms.MessageBox]::Show(
+            $_.Exception.Message,
+            '开机自启设置失败',
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+    }
+})
+
 $startButton.Add_Click({
     if ($script:phase -ne 'idle') { return }
 
-    if ($mobileRadio.Checked) {
-        $script:selectedOperator = '移动'
-    } elseif ($unicomRadio.Checked) {
-        $script:selectedOperator = '联通'
-    } else {
-        $script:selectedOperator = '电信'
+    if ($script:selectedOperator -notin $script:validOperators) {
+        [System.Windows.Forms.MessageBox]::Show(
+            '请先选择移动、电信或联通。',
+            '校园网坐标点击器',
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+        return
     }
 
     $activePoints = [System.Collections.Generic.List[object]]::new()
@@ -363,6 +595,15 @@ $form.Add_FormClosing({
     $timer.Stop()
     Close-WaitOverlay
 })
+
+if ($AutoStart) {
+    $form.StartPosition = 'Manual'
+    $form.Location = New-Object System.Drawing.Point(20, 20)
+    $form.Add_Shown({
+        $status.Text = "开机自启：即将自动连接$($script:selectedOperator)校园宽带。"
+        $startButton.PerformClick()
+    })
+}
 
 [void]$form.ShowDialog()
 exit 0
